@@ -1,5 +1,7 @@
 # Crache
 
+![Crabs Header](cache%20of%20crabs.png)
+
 Crache is a simple Rust project that demonstrates basic networking and RESP protocol parsing. It includes a TCP server that echoes incoming messages and utilities to parse and validate RESP-formatted data.
 
 ## Project Structure

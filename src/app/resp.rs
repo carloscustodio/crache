@@ -1,18 +1,18 @@
-use std::io::{Cursor, Read};
+use std::{io::{Cursor, Read}, vec};
 
 pub struct Value {
-    pub typ: String,       // equivalent to Go's `string`
+    pub typ: String,       
     pub str: String,       // equivalent to Go's `string`
     pub num: i32,          // equivalent to Go's `int` (change to i64 if needed)
-    pub bulk: String,      // equivalent to Go's `string`
+    pub bulk: Vec<Value>,      // equivalent to Go's `string`
     pub array: Vec<Value>, // equivalent to Go's `[]Value`
 }
 
 pub struct Resp {
-    reader: Result<Cursor<Vec<u8>>, std::io::Error>,
+    pub reader: Result<Cursor<Vec<u8>>, std::io::Error>,
 }
 
-pub fn check_input(input: &str) -> &'static str {
+/*pub fn check_input(input: &str) -> &'static str {
     let mut cursor = Cursor::new(input.as_bytes());
 
     // Read first byte and check it is '$'
@@ -43,7 +43,7 @@ pub fn check_input(input: &str) -> &'static str {
     println!("{}", String::from_utf8_lossy(&name));
 
     "Success"
-}
+}*/
 
  
 impl Resp {
@@ -53,15 +53,6 @@ impl Resp {
             reader: Ok(Cursor::new(vec![])),
         }
     }
-
-    // A constructor that accepts a vector of bytes
-    pub fn new(reader_data: Vec<u8>) -> Self {
-        Resp {
-            reader: Ok(Cursor::new(reader_data)),
-        }
-    }
-
-    
 
     pub fn read_line(&mut self) -> Result<(Vec<u8>, usize), std::io::Error> {
         let cursor = match self.reader.as_mut() {
@@ -109,31 +100,35 @@ impl Resp {
             b'*' => {
                 let array = self.read_array()?;
                 Ok(Value {
-                    typ: "*".to_string(),
+                    typ: "array".to_string(),
                     str: String::new(),
                     num: 0,
-                    bulk: String::new(),
-                    array,
+                    bulk:  vec![],
+                    array: array,
                 })
             },
-           // b'$' => self.read_bulk(),
-            _ => {
-                println!("Unknown type: {}", type_byte as char);
-                // Return an empty Value (or you can choose to return an error)
+            b'$' => {
+                let bulk = self.read_bulk()?;
                 Ok(Value {
-                    typ: String::new(),
+                    typ: "bulk".to_string(),
                     str: String::new(),
                     num: 0,
-                    bulk: String::new(),
+                    bulk: bulk,
                     array: vec![],
                 })
+            },
+            _ => {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Unexpected type byte: {}", type_byte as char),
+                ))
             }
         }
     }
 
     pub fn read_integer(&mut self) -> Result<i32, std::io::Error> {
         // Call our existing read_line method.
-        let (line, n) = self.read_line()?;
+        let (line, _) = self.read_line()?;
         // Convert the line (Vec<u8>) into a &str.
         let s = std::str::from_utf8(&line)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
@@ -145,7 +140,7 @@ impl Resp {
     }
     pub fn read_array(&mut self) -> Result<Vec<Value>, std::io::Error> {
         
-        let v = Resp::new_resp();
+
         let length: usize = self.read_integer()?.try_into().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid size"))?;
        
         let mut array: Vec<Value> = Vec::with_capacity(length);
@@ -158,4 +153,17 @@ impl Resp {
         Ok(array)
     }
 
+
+    pub fn read_bulk(&mut self) -> Result<Vec<Value>, std::io::Error> {
+
+        let length =  self.read_integer()?.try_into().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid size"))?;
+        // Trim any whitespace and attempt to parse the integer.
+        let mut array: Vec<Value> = Vec::with_capacity(length);
+        for _ in 0..length {
+            let val = self.read()?;
+            array.push(val);
+        }
+
+        Ok(array)
+    }
 }

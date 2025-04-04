@@ -1,28 +1,21 @@
-
-
-use std::io::{Read, Write};
+use crache::app::resp::Resp;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use std::thread;
-
-
+use std::thread; // added import
 
 fn handle_client(mut stream: TcpStream) {
     // Buffer to store incoming data
-    let mut buffer = [0; 1024];
-    
-    match stream.read(&mut buffer) {
-        Ok(size) => {
-            // Echo the data back to the client
-            let message = String::from_utf8_lossy(&buffer[0..size]);
-            println!("Received: {}", message);
-            
-            if let Err(e) = stream.write_all(&buffer[0..size]) {
-                println!("Failed to send response: {}", e);
-            }
-        }
-        Err(e) => {
-            println!("Error reading from connection: {}", e);
-        }
+    let mut buffer = Vec::new();
+    if let Err(e) = stream.read_to_end(&mut buffer) {
+        println!("Error reading stream: {}", e);
+        return;
+    }
+    let mut resp = Resp {
+        reader: Ok(std::io::Cursor::new(buffer)),
+    };
+    match resp.read() {
+        Ok(val) => println!("Received value of type: {}", val.typ),
+        Err(e) => println!("Error parsing RESP: {}", e),
     }
 }
 
