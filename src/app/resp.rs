@@ -1,51 +1,113 @@
-use std::{io::{Cursor, Read}, vec};
+use std::{
+    io::{Cursor, Read},
+    vec,
+};
 
 pub struct Value {
-    pub typ: String,       
+    pub typ: String,
     pub str: String,       // equivalent to Go's `string`
     pub num: i32,          // equivalent to Go's `int` (change to i64 if needed)
-    pub bulk: Vec<Value>,      // equivalent to Go's `string`
-    pub array: Vec<Value>, // equivalent to Go's `[]Value`
+    pub bulk: String,      // equivalent to Go's `string` (changed from Vec<u8> to String)
+    pub array: Vec<Value>, // equivalent to Go's `[]Value` (changed from Vec<u8> to Vec<Value>)
+}
+
+impl Value {
+    pub fn marshal(&self) -> Vec<u8> {
+        match self.typ.as_str() {
+            "array" => self.array_marshal(),
+            "bulk" => self.bulk_marshal(),
+            "string" => self.string_marshal(),
+            "integer" => self.integer_marshal(),
+            "null" => self.null_marshal(),
+            "error" => self.error_marshal(),
+            _ => return vec![],
+        }
+    }
+
+    pub fn null_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b'$'); // Use '$' for null type
+        result.extend_from_slice(b"-1"); // Use '-' to indicate null value
+        result.push(b'\r');
+        result.push(b'\n');
+        result
+    }
+
+    pub fn error_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b'-'); // Use '-' for error type
+        result.extend_from_slice(self.str.as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+        result
+    }
+
+    pub fn string_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b'+'); // Use '+' for string type
+        result.extend_from_slice(self.str.as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+        result
+    }
+
+    pub fn bulk_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b'$'); // Use '$' for bulk type
+        result.extend_from_slice(self.bulk.len().to_string().as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+        result.extend_from_slice(self.bulk.as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+        result
+    }
+
+    pub fn integer_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b':'); // Use ':' for integer type
+        result.extend_from_slice(self.num.to_string().as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+        result
+    }
+
+    pub fn array_marshal(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.push(b'*'); // Use '*' for array type
+        result.extend_from_slice(self.array.len().to_string().as_bytes());
+        result.push(b'\r');
+        result.push(b'\n');
+
+        // Marshal each value in the array
+        for value in &self.array {
+            result.extend_from_slice(&value.marshal());
+        }
+
+        result
+    }
+
+    pub fn print(&self) -> String {
+        match self.typ.as_str() {
+            "array" => {
+                let mut items = Vec::new();
+                for val in &self.array {
+                    items.push(val.print());
+                }
+                format!("Array: [{}]", items.join(", "))
+            }
+            "bulk" => format!("Bulk: \"{}\"", self.bulk),
+            "string" => format!("String: \"{}\"", self.str),
+            "integer" => format!("Integer: {}", self.num),
+            _ => "Unknown".to_string(),
+        }
+    }
 }
 
 pub struct Resp {
     pub reader: Result<Cursor<Vec<u8>>, std::io::Error>,
 }
 
-/*pub fn check_input(input: &str) -> &'static str {
-    let mut cursor = Cursor::new(input.as_bytes());
-
-    // Read first byte and check it is '$'
-    let mut first_byte = [0u8; 1];
-    if cursor.read_exact(&mut first_byte).is_err() || first_byte[0] != b'$' {
-        return "Error";
-    }
-
-    // Read size byte and check if it's a digit
-    let mut size_byte = [0u8; 1];
-    if cursor.read_exact(&mut size_byte).is_err() || !(b'0'..=b'9').contains(&size_byte[0]) {
-        return "Error";
-    }
-    let size: usize = (size_byte[0] - b'0') as usize;
-    println!("size: {}", size);
-
-    // Check for "\r\n"
-    let mut newline = [0u8; 2];
-    if cursor.read_exact(&mut newline).is_err() || newline != *b"\r\n" {
-        return "Error";
-    }
-
-    // Read exactly `size` bytes
-    let mut name = vec![0u8; size];
-    if cursor.read_exact(&mut name).is_err() {
-        return "Error";
-    }
-    println!("{}", String::from_utf8_lossy(&name));
-
-    "Success"
-}*/
-
- 
 impl Resp {
     // Create a new Resp with empty data
     pub fn new_resp() -> Self {
@@ -97,32 +159,38 @@ impl Resp {
 
         // Match on the type byte
         match type_byte {
-            b'*' => {
-                let array = self.read_array()?;
+            b'*' => self.read_array(),
+            b'$' => self.read_bulk(),
+            b'+' => {
+                let (line, _) = self.read_line()?;
+                let str_val = String::from_utf8(line).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8")
+                })?;
                 Ok(Value {
-                    typ: "array".to_string(),
-                    str: String::new(),
+                    typ: "string".to_string(),
+                    str: str_val,
                     num: 0,
-                    bulk:  vec![],
-                    array: array,
-                })
-            },
-            b'$' => {
-                let bulk = self.read_bulk()?;
-                Ok(Value {
-                    typ: "bulk".to_string(),
-                    str: String::new(),
-                    num: 0,
-                    bulk: bulk,
+                    bulk: String::new(),
                     array: vec![],
                 })
-            },
-            _ => {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Unexpected type byte: {}", type_byte as char),
-                ))
             }
+            b':' => {
+                let num_val = self.read_integer()?;
+                Ok(Value {
+                    typ: "integer".to_string(),
+                    str: String::new(),
+                    num: num_val,
+                    bulk: String::new(),
+                    array: vec![],
+                })
+            }
+            _ => Ok(Value {
+                typ: "error".to_string(),
+                str: format!("Unexpected type byte: {}", type_byte as char),
+                num: 0,
+                bulk: String::new(),
+                array: vec![],
+            }),
         }
     }
 
@@ -138,32 +206,82 @@ impl Resp {
         })?;
         Ok(int_val as i32)
     }
-    pub fn read_array(&mut self) -> Result<Vec<Value>, std::io::Error> {
-        
 
-        let length: usize = self.read_integer()?.try_into().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid size"))?;
-       
-        let mut array: Vec<Value> = Vec::with_capacity(length);
+    pub fn read_array(&mut self) -> Result<Value, std::io::Error> {
+        // Read the length of the array
+        let length = self.read_integer()? as usize;
+
+        // Create an array to store values
+        let mut array = Vec::with_capacity(length);
+
+        // Read each value recursively
         for _ in 0..length {
             let val = self.read()?;
             array.push(val);
         }
-       
 
-        Ok(array)
+        Ok(Value {
+            typ: "array".to_string(),
+            str: String::new(),
+            num: 0,
+            bulk: String::new(),
+            array,
+        })
     }
 
+    pub fn read_bulk(&mut self) -> Result<Value, std::io::Error> {
+        // Read the length of the bulk string
+        let length = self.read_integer()? as usize;
 
-    pub fn read_bulk(&mut self) -> Result<Vec<Value>, std::io::Error> {
+        // Read exactly length bytes for the content
+        let mut buffer = vec![0u8; length];
+        let cursor = match self.reader.as_mut() {
+            Ok(c) => c,
+            Err(e) => return Err(std::io::Error::new(e.kind(), "previous error state")),
+        };
 
-        let length =  self.read_integer()?.try_into().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid size"))?;
-        // Trim any whitespace and attempt to parse the integer.
-        let mut array: Vec<Value> = Vec::with_capacity(length);
-        for _ in 0..length {
-            let val = self.read()?;
-            array.push(val);
+        cursor.read_exact(&mut buffer)?;
+
+        // Read the trailing \r\n
+        let mut crlf = [0u8; 2];
+        cursor.read_exact(&mut crlf)?;
+        if crlf != *b"\r\n" {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Missing CRLF after bulk string",
+            ));
         }
 
-        Ok(array)
+        // Convert binary data to UTF-8 string
+        let bulk_str = String::from_utf8(buffer).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid UTF-8 in bulk string",
+            )
+        })?;
+
+        Ok(Value {
+            typ: "bulk".to_string(),
+            str: String::new(),
+            num: 0,
+            bulk: bulk_str,
+            array: vec![],
+        })
+    }
+}
+
+pub struct Writer<W: std::io::Write> {
+    writer: W,
+}
+
+impl<W: std::io::Write> Writer<W> {
+    pub fn new(writer: W) -> Self {
+        Writer { writer }
+    }
+
+    pub fn write(&mut self, v: &Value) -> Result<(), std::io::Error> {
+        let bytes = v.marshal();
+        self.writer.write_all(&bytes)?;
+        Ok(())
     }
 }
