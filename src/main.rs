@@ -1,5 +1,4 @@
 use crache::app::resp::{Resp, Value, Writer};
-use crache::app::handler::{Resp, Value, Writer};
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::thread; // added import
@@ -9,12 +8,13 @@ fn handle_client(mut stream: TcpStream) {
     let mut buffer = Vec::new();
     let mut command = String::new();
     let mut args = Vec::new();
-    let mut Handler = crate::crache::app::handler::CommandHandler::new();
+    let mut handler = crache::app::handler::CommandHandler::new();
 
     if let Err(e) = stream.read_to_end(&mut buffer) {
         println!("Error reading stream: {}", e);
         return;
     }
+    println!("Buffer: {:?}", buffer);
     let mut resp = Resp {
         reader: Ok(std::io::Cursor::new(buffer)),
     };
@@ -37,7 +37,7 @@ fn handle_client(mut stream: TcpStream) {
 
 fn main() {
     // Create a TCP listener bound to address 127.0.0.1:8080
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
+    let listener = TcpListener::bind("127.0.0.1:6379").expect("Failed to bind to address");
     println!("Server listening on port 8080");
 
     // Accept connections and process them serially
