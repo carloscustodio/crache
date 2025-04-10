@@ -225,7 +225,7 @@ impl Resp {
             str: String::new(),
             num: 0,
             bulk: String::new(),
-            array,
+            array:array,
         })
     }
 

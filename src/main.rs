@@ -1,51 +1,45 @@
-use crache::app::resp::{Resp, Value, Writer};
+use crache::app::handler::get_handler;
+use crache::app::resp::{Resp, Writer};
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use std::thread; // added import
+use std::thread;
 
 fn handle_client(mut stream: TcpStream) {
-    // Buffer to store incoming data
-    let mut buffer = Vec::new();
-    let mut command = String::new();
-    let mut args = Vec::new();
-    let mut handler = crache::app::handler::CommandHandler::new();
+    let mut buffer = [0u8; 1024];
+    let mut handler = None;
+    let mut args = vec![];
+    match stream.read(&mut buffer) {
+        Ok(n) if n > 0 => {
+            let mut resp = Resp {
+                reader: Ok(std::io::Cursor::new(buffer.to_vec()))
+            };
+            let mut writer = Writer {
+                writer: std::io::Cursor::new(buffer)};
+            match resp.read() {
+                Ok(val) => {
+                    let command = val.array[0].str.clone().to_uppercase();
+                     args = val.array[1..].to_vec();
+                     handler = get_handler(&command);
 
-    if let Err(e) = stream.read_to_end(&mut buffer) {
-        println!("Error reading stream: {}", e);
-        return;
+                }
+                Err(e) => println!("Error parsing RESP: {}", e),
+            }
+            let value = handler.unwrap()(args);
+             let _ = writer.write(&value);
+        }
+        Ok(_) => println!("Client disconnected"),
+        Err(e) => println!("Error reading stream: {}", e),
     }
-    println!("Buffer: {:?}", buffer);
-    let mut resp = Resp {
-        reader: Ok(std::io::Cursor::new(buffer)),
-    };
-    let mut writer = Writer {
-        writer: std::io::Cursor::new(Vec::new()),
-    };
-    match resp.read() {
-        Ok(val) =>{
-            command = val.array[0].str.clone().to_uppercase();
-            args = val.array[1..].to_vec();
-},
-        Err(e) => println!("Error parsing RESP: {}", e),
-    }
-    match writer.write(&Value{typ: "string".to_owned(), str: "OK".to_owned() , num: 0, bulk: "".to_owned(), array: vec![]}) {
-        Ok(_) => println!("Successfully wrote RESP"),
-        Err(e) => println!("Error writing RESP: {}", e),
-    }
-
 }
 
 fn main() {
-    // Create a TCP listener bound to address 127.0.0.1:8080
     let listener = TcpListener::bind("127.0.0.1:6379").expect("Failed to bind to address");
-    println!("Server listening on port 8080");
+    println!("Server listening on port 6379");
 
-    // Accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 println!("New connection: {}", stream.peer_addr().unwrap());
-                // Spawn a new thread for each connection
                 thread::spawn(move || {
                     handle_client(stream);
                 });
