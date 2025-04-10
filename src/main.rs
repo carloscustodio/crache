@@ -1,4 +1,5 @@
-use crache::app::resp::Resp;
+use crache::app::resp::{Resp, Value, Writer};
+use crache::app::handler::{Resp, Value, Writer};
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::thread; // added import
@@ -6,6 +7,10 @@ use std::thread; // added import
 fn handle_client(mut stream: TcpStream) {
     // Buffer to store incoming data
     let mut buffer = Vec::new();
+    let mut command = String::new();
+    let mut args = Vec::new();
+    let mut Handler = crate::crache::app::handler::CommandHandler::new();
+
     if let Err(e) = stream.read_to_end(&mut buffer) {
         println!("Error reading stream: {}", e);
         return;
@@ -13,10 +18,21 @@ fn handle_client(mut stream: TcpStream) {
     let mut resp = Resp {
         reader: Ok(std::io::Cursor::new(buffer)),
     };
+    let mut writer = Writer {
+        writer: std::io::Cursor::new(Vec::new()),
+    };
     match resp.read() {
-        Ok(val) => println!("Received value of type: {}", val.typ),
+        Ok(val) =>{
+            command = val.array[0].str.clone().to_uppercase();
+            args = val.array[1..].to_vec();
+},
         Err(e) => println!("Error parsing RESP: {}", e),
     }
+    match writer.write(&Value{typ: "string".to_owned(), str: "OK".to_owned() , num: 0, bulk: "".to_owned(), array: vec![]}) {
+        Ok(_) => println!("Successfully wrote RESP"),
+        Err(e) => println!("Error writing RESP: {}", e),
+    }
+
 }
 
 fn main() {

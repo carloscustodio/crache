@@ -2,7 +2,7 @@ use std::{
     io::{Cursor, Read},
     vec,
 };
-
+#[derive(Clone)]
 pub struct Value {
     pub typ: String,
     pub str: String,       // equivalent to Go's `string`
@@ -271,7 +271,7 @@ impl Resp {
 }
 
 pub struct Writer<W: std::io::Write> {
-    writer: W,
+    pub writer: W,
 }
 
 impl<W: std::io::Write> Writer<W> {
