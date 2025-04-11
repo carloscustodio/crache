@@ -9,29 +9,39 @@ fn handle_client(mut stream: TcpStream) {
     let mut handler = None;
     let mut args = vec![];
     match stream.read(&mut buffer) {
-        Ok(n) if n > 0 => {
-            let mut resp = Resp {
-                reader: Ok(std::io::Cursor::new(buffer.to_vec()))
-            };
-            let mut writer = Writer {
-                writer: std::io::Cursor::new(buffer)};
-            match resp.read() {
-                Ok(val) => {
-                    let command = val.array[0].str.clone().to_uppercase();
-                     args = val.array[1..].to_vec();
-                     handler = get_handler(&command);
-
+        Ok(n) => {
+            if n > 0 {
+                let mut resp = Resp {
+                    reader: Ok(std::io::Cursor::new(buffer[..n].to_vec()))
+                };
+                // Use the stream directly for writing back to the client.
+                let mut writer = Writer {
+                    writer: &mut stream
+                };
+                match resp.read() {
+                    Ok(val) => {
+                        let command = &val.array[0].bulk; 
+                        println!("val: {:?}", command);               
+                        args = val.array[1..].to_vec();
+                        handler = get_handler(&command.to_string());
+                    }
+                    Err(e) => println!("Error parsing RESP: {}", e),
                 }
-                Err(e) => println!("Error parsing RESP: {}", e),
+                if let Some(func) = handler {
+                    let value = func(args);
+                    if let Err(e) = writer.write(&value) {
+                        eprintln!("Error writing response: {}", e);
+                    }
+                } else {
+                    eprintln!("No matching handler found.");
+                }
             }
-            let value = handler.unwrap()(args);
-             let _ = writer.write(&value);
         }
-        Ok(_) => println!("Client disconnected"),
-        Err(e) => println!("Error reading stream: {}", e),
+        Err(e) => {
+            println!("Error reading stream: {}", e);
+        }
     }
 }
-
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").expect("Failed to bind to address");
     println!("Server listening on port 6379");

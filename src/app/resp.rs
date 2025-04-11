@@ -2,7 +2,7 @@ use std::{
     io::{Cursor, Read},
     vec,
 };
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Value {
     pub typ: String,
     pub str: String,       // equivalent to Go's `string`
@@ -279,9 +279,9 @@ impl<W: std::io::Write> Writer<W> {
         Writer { writer }
     }
 
-    pub fn write(&mut self, v: &Value) -> Result<(), std::io::Error> {
+    pub fn write(&mut self, v: &Value) -> Result<Vec<u8>, std::io::Error> {
         let bytes = v.marshal();
         self.writer.write_all(&bytes)?;
-        Ok(())
+        Ok(bytes)
     }
 }
