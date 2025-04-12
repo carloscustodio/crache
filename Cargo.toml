@@ -2,10 +2,11 @@
 name = "crache"
 version = "0.1.0"
 edition = "2021"
-
+rust-version = "1.78"
 
 [lib]
 name = "crache"
 path = "src/lib.rs" 
 
 [dependencies]
+lazy_static = "1.4.0"

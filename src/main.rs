@@ -23,7 +23,7 @@ fn handle_client(mut stream: TcpStream) {
                         let command = &val.array[0].bulk; 
                         println!("val: {:?}", command);               
                         args = val.array[1..].to_vec();
-                        handler = get_handler(&command.to_string());
+                        handler = get_handler(&command.to_string().to_ascii_uppercase());
                     }
                     Err(e) => println!("Error parsing RESP: {}", e),
                 }
