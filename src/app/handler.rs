@@ -138,6 +138,17 @@ fn hget_handler(_args: Vec<Value>) -> Value {
     }
 }
 
+fn command_handler(_args: Vec<Value>) -> Value {
+    Value {
+        typ: "string".to_string(),
+        str: "OK".to_string(),
+        num: 0,
+        bulk: String::new(),
+        array: vec![],
+    }
+}
+
+
 fn hgetall_handler(_args: Vec<Value>) -> Value {
     if _args.len() != 1 {
         return Value {
@@ -203,6 +214,7 @@ pub fn get_handler(command: &str) -> Option<HandlerFunc> {
         "HSET" => Some(hset_handler),
         "HGET" => Some(hget_handler),
         "HGETALL" => Some(hgetall_handler),
+        "COMMAND" => Some(command_handler),
         _ => None,
     }
 }
